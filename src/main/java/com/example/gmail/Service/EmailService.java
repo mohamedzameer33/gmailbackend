@@ -3,18 +3,12 @@ package com.example.gmail.Service;
 import com.example.gmail.Entity.EmailTemplate;
 import com.example.gmail.Repository.TemplateRepository;
 import com.sendgrid.*;
+import com.sendgrid.helpers.mail.Mail;
+import com.sendgrid.helpers.mail.objects.*;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.core.io.ByteArrayResource;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
-import com.sendgrid.Attachments;
-import com.sendgrid.Content;
-import com.sendgrid.Email;
-import com.sendgrid.Mail;
-import com.sendgrid.Method;
-import com.sendgrid.Request;
-import com.sendgrid.Response;
-import com.sendgrid.SendGrid;
+
 import java.io.IOException;
 import java.util.Base64;
 
@@ -67,14 +61,14 @@ public class EmailService {
         templateRepository.deleteById(id);
     }
 
-    // SEND EMAIL WITH SENDGRID
+    // SEND EMAIL
     public void sendEmailWithAttachment(String to, String subject, String body, MultipartFile manualFile, Long templateId) throws IOException {
-        Email from = new Email("your_verified_sendgrid_email@example.com"); // Must be verified in SendGrid
+        Email from = new Email("mohamedzameermpm123@gmail.com"); // verified sender
         Email toEmail = new Email(to);
         Content content = new Content("text/html", body);
         Mail mail = new Mail(from, subject, toEmail, content);
 
-        // Attachment: manual file
+        // manual file attachment
         if (manualFile != null && !manualFile.isEmpty()) {
             Attachments attachment = new Attachments();
             attachment.setFilename(manualFile.getOriginalFilename());
@@ -83,7 +77,8 @@ public class EmailService {
             attachment.setContent(Base64.getEncoder().encodeToString(manualFile.getBytes()));
             mail.addAttachments(attachment);
         }
-        // Attachment: from template
+
+        // attachment from template
         else if (templateId != null) {
             templateRepository.findById(templateId).ifPresent(t -> {
                 if (t.getFileData() != null) {
@@ -97,12 +92,13 @@ public class EmailService {
             });
         }
 
+        SendGrid sg = sendGrid;
         Request request = new Request();
         try {
             request.setMethod(Method.POST);
             request.setEndpoint("mail/send");
             request.setBody(mail.build());
-            Response response = sendGrid.api(request);
+            Response response = sg.api(request);
 
             if (response.getStatusCode() >= 400) {
                 throw new IOException("SendGrid error: " + response.getBody());
