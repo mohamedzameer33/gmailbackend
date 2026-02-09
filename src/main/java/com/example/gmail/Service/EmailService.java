@@ -2,96 +2,74 @@ package com.example.gmail.Service;
 
 import com.example.gmail.Entity.EmailTemplate;
 import com.example.gmail.Repository.TemplateRepository;
-import jakarta.mail.MessagingException;
-import jakarta.mail.internet.MimeMessage;
-import jakarta.transaction.Transactional;
+import com.sendgrid.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ByteArrayResource;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.util.Base64;
+import java.util.Optional;
 
 @Service
 public class EmailService {
 
     @Autowired
-    private JavaMailSender mailSender;
-
-    @Autowired
     private TemplateRepository templateRepository;
 
-    // --- SAVE TEMPLATE ---
-    public EmailTemplate saveTemplateWithFile(String name, String subject, String body, MultipartFile file) throws IOException {
-        EmailTemplate template = new EmailTemplate();
-        template.setTemplateName(name);
-        template.setSubject(subject);
-        template.setBody(body);
+    // --- SEND EMAIL USING SENDGRID ---
+    public void sendEmailWithAttachment(String to, String subject, String body, MultipartFile manualFile, Long templateId) throws IOException {
+        SendGrid sg = new SendGrid(System.getenv("SENDGRID_API_KEY"));
 
-        if (file != null && !file.isEmpty()) {
-            template.setFileName(file.getOriginalFilename());
-            template.setFileData(file.getBytes());
-            template.setFileType(file.getContentType());
-        }
+        Mail mail = new Mail();
+        Email fromEmail = new Email("mohamedzameermpm123@gmail.com"); // must be verified in SendGrid
+        mail.setFrom(fromEmail);
+        mail.setSubject(subject);
 
-        return templateRepository.save(template);
-    }
+        Personalization personalization = new Personalization();
+        personalization.addTo(new Email(to));
+        mail.addPersonalization(personalization);
 
-    // --- UPDATE TEMPLATE ---
-    @Transactional
-    public EmailTemplate updateTemplate(Long id, String name, String subject, String body, MultipartFile file) throws Exception {
-        EmailTemplate existing = templateRepository.findById(id)
-                .orElseThrow(() -> new Exception("Template not found: " + id));
+        Content content = new Content("text/plain", body);
+        mail.addContent(content);
 
-        existing.setTemplateName(name);
-        existing.setSubject(subject);
-        existing.setBody(body);
-
-        if (file != null && !file.isEmpty()) {
-            existing.setFileName(file.getOriginalFilename());
-            existing.setFileData(file.getBytes());
-            existing.setFileType(file.getContentType());
-        }
-
-        return templateRepository.save(existing);
-    }
-
-    // --- DELETE TEMPLATE ---
-    public void deleteTemplate(Long id) throws Exception {
-        if (!templateRepository.existsById(id)) throw new Exception("Template does not exist: " + id);
-        templateRepository.deleteById(id);
-    }
-
-    // --- SEND EMAIL ---
-    public void sendEmailWithAttachment(String to, String subject, String body, MultipartFile manualFile, Long templateId) throws MessagingException {
-        try {
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, true);
-
-            helper.setTo(to);
-            helper.setSubject(subject);
-            helper.setText(body, true); // true = HTML enabled
-
-            // Attachment priority: manual file > DB template file
-            if (manualFile != null && !manualFile.isEmpty()) {
-                helper.addAttachment(manualFile.getOriginalFilename(), manualFile);
-            } else if (templateId != null) {
-                templateRepository.findById(templateId).ifPresent(temp -> {
-                    if (temp.getFileData() != null) {
-                        try {
-                            helper.addAttachment(temp.getFileName(), new ByteArrayResource(temp.getFileData()));
-                        } catch (MessagingException e) {
-                            throw new RuntimeException("Attachment failed: " + e.getMessage());
-                        }
-                    }
-                });
+        // Attach manual file if uploaded
+        if (manualFile != null && !manualFile.isEmpty()) {
+            Attachments attachments = new Attachments();
+            attachments.setContent(Base64.getEncoder().encodeToString(manualFile.getBytes()));
+            attachments.setType(manualFile.getContentType());
+            attachments.setFilename(manualFile.getOriginalFilename());
+            attachments.setDisposition("attachment");
+            mail.addAttachments(attachments);
+        } 
+        // Attach file from template if templateId provided
+        else if (templateId != null) {
+            Optional<EmailTemplate> templateOpt = templateRepository.findById(templateId);
+            if (templateOpt.isPresent()) {
+                EmailTemplate temp = templateOpt.get();
+                if (temp.getFileData() != null) {
+                    Attachments attachments = new Attachments();
+                    attachments.setContent(Base64.getEncoder().encodeToString(temp.getFileData()));
+                    attachments.setType(temp.getFileType());
+                    attachments.setFilename(temp.getFileName());
+                    attachments.setDisposition("attachment");
+                    mail.addAttachments(attachments);
+                }
             }
+        }
 
-            mailSender.send(message);
-        } catch (MessagingException e) {
-            throw new MessagingException("Failed to send email: " + e.getMessage(), e);
+        Request request = new Request();
+        try {
+            request.setMethod(Method.POST);
+            request.setEndpoint("mail/send");
+            request.setBody(mail.build());
+            Response response = sg.api(request);
+            if (response.getStatusCode() >= 400) {
+                throw new IOException("SendGrid error: " + response.getBody());
+            }
+        } catch (IOException ex) {
+            throw ex;
         }
     }
 }
