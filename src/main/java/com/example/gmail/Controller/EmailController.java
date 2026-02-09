@@ -11,7 +11,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/mail")
-@CrossOrigin(origins = "http://localhost:5173")
+@CrossOrigin(origins = "https://zam-gmailtemp.vercel.app")
 public class EmailController {
 
     @Autowired private EmailService emailService;
