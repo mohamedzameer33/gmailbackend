@@ -3,6 +3,9 @@ package com.example.gmail.Service;
 import com.example.gmail.Entity.EmailTemplate;
 import com.example.gmail.Repository.TemplateRepository;
 import com.sendgrid.*;
+import com.sendgrid.helpers.mail.Mail;
+import com.sendgrid.helpers.mail.objects.*;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
